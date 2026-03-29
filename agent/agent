@@ -1,0 +1,237 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROMPTS_DIR="$SCRIPT_DIR/prompts"
+SYSTEM_FILE="$PROMPTS_DIR/system.md"
+DEFAULT_MODEL="sonnet"
+DATE=$(date +%Y-%m-%d)
+
+usage() {
+  cat <<EOF
+Usage: agent <command> [args]
+
+Commands:
+  run <name>       Run a prompt and write output to Obsidian
+  run --all        Run all prompts
+  list             List available prompts
+  dry <name>       Show what would be executed (without running)
+
+Prompts live in: $PROMPTS_DIR
+EOF
+  exit 1
+}
+
+# Parse frontmatter from a prompt file
+parse_frontmatter() {
+  local file="$1"
+  local key="$2"
+  sed -n '/^---$/,/^---$/p' "$file" | grep "^${key}:" | sed "s/^${key}:[[:space:]]*//" || true
+}
+
+# Extract prompt body (everything after second ---)
+parse_body() {
+  local file="$1"
+  awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{print}' "$file"
+}
+
+# Run a single prompt
+run_prompt() {
+  local name="$1"
+  local file="$PROMPTS_DIR/${name}.md"
+
+  if [[ ! -f "$file" ]]; then
+    echo "Error: prompt '$name' not found at $file" >&2
+    exit 1
+  fi
+
+  local output_dir tools filename model context_glob static
+  output_dir=$(parse_frontmatter "$file" "output")
+  tools=$(parse_frontmatter "$file" "tools")
+  filename=$(parse_frontmatter "$file" "filename")
+  model=$(parse_frontmatter "$file" "model")
+  context_glob=$(parse_frontmatter "$file" "context")
+  static=$(parse_frontmatter "$file" "static")
+  model="${model:-$DEFAULT_MODEL}"
+
+  if [[ -z "$output_dir" ]]; then
+    echo "Error: no 'output' defined in frontmatter of $file" >&2
+    exit 1
+  fi
+
+  # Default filename to prompt name
+  filename="${filename:-$name}"
+  # Replace underscores with hyphens for clean filenames
+  filename="${filename//_/-}"
+
+  local output_file
+  if [[ "$static" == "true" ]]; then
+    output_file="$output_dir/${filename}.md"
+  else
+    output_file="$output_dir/${DATE}-${filename}.md"
+  fi
+  local body
+  body=$(parse_body "$file")
+
+  # If context glob is set, collect last 7 matching files and prepend as context
+  if [[ -n "$context_glob" ]]; then
+    local context_dir context_pattern context_files context_block=""
+    context_dir="$(dirname "$context_glob")"
+    context_pattern="$(basename "$context_glob")"
+    context_files=$(find "$context_dir" -maxdepth 1 -name "$context_pattern" -type f 2>/dev/null | sort -r | head -7)
+    if [[ -n "$context_files" ]]; then
+      context_block="<KONTEXT BISHERIGER AUSGABEN>"$'\n'
+      while IFS= read -r cf; do
+        context_block+="--- $(basename "$cf") ---"$'\n'
+        context_block+="$(cat "$cf")"$'\n\n'
+      done <<< "$context_files"
+      context_block+="</KONTEXT BISHERIGER AUSGABEN>"$'\n\n'
+      body="${context_block}${body}"
+    fi
+  fi
+
+  mkdir -p "$output_dir"
+
+  echo "Running: $name"
+  echo "  Model: $model"
+  echo "  Tools: ${tools:-none}"
+  echo "  Output: $output_file"
+
+  local cmd=(claude -p "$body" --output-format json --model "$model")
+  if [[ -f "$SYSTEM_FILE" ]]; then
+    cmd+=(--system-prompt "$(cat "$SYSTEM_FILE")")
+  fi
+  if [[ -n "$tools" ]]; then
+    cmd+=(--allowedTools "$tools")
+  fi
+
+  local json
+  json=$("${cmd[@]}")
+
+  # Extract result text and stats
+  local result duration_s cost model input_tokens output_tokens
+  result=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'])")
+  duration_s=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"{d['duration_ms']/1000:.1f}\")")
+  cost=$(echo "$json" | python3 -c "import sys,json; print(f\"{json.load(sys.stdin)['total_cost_usd']:.4f}\")")
+  model=$(echo "$json" | python3 -c "import sys,json; print(list(json.load(sys.stdin)['modelUsage'].keys())[0])")
+  input_tokens=$(echo "$json" | python3 -c "import sys,json; u=json.load(sys.stdin)['usage']; print(u['input_tokens']+u.get('cache_read_input_tokens',0))")
+  output_tokens=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin)['usage']['output_tokens'])")
+
+  # Write result + stats footer
+  {
+    echo "$result"
+    echo ""
+    echo "---"
+    local label="Generated"
+    [[ "$static" == "true" ]] && label="Last update"
+    echo "*${label}: ${DATE} · Model: ${model} · Duration: ${duration_s}s · Tokens: ${input_tokens} in / ${output_tokens} out · Cost: \$${cost}*"
+  } > "$output_file"
+
+  echo "  Done: ${duration_s}s · \$${cost} · ${output_tokens} tokens out"
+}
+
+# List all prompts
+list_prompts() {
+  echo "Available prompts:"
+  echo ""
+  for file in "$PROMPTS_DIR"/*.md; do
+    [[ -f "$file" ]] || continue
+    [[ "$(basename "$file")" == "system.md" ]] && continue
+    local name output tools model
+    name=$(basename "$file" .md)
+    output=$(parse_frontmatter "$file" "output")
+    tools=$(parse_frontmatter "$file" "tools")
+    model=$(parse_frontmatter "$file" "model")
+    model="${model:-$DEFAULT_MODEL}"
+    printf "  %-20s %-8s tools=%-15s → %s\n" "$name" "$model" "${tools:-none}" "$output"
+  done
+}
+
+# Dry run
+dry_run() {
+  local name="$1"
+  local file="$PROMPTS_DIR/${name}.md"
+
+  if [[ ! -f "$file" ]]; then
+    echo "Error: prompt '$name' not found" >&2
+    exit 1
+  fi
+
+  local output_dir tools filename body model context_glob static
+  output_dir=$(parse_frontmatter "$file" "output")
+  tools=$(parse_frontmatter "$file" "tools")
+  filename=$(parse_frontmatter "$file" "filename")
+  model=$(parse_frontmatter "$file" "model")
+  context_glob=$(parse_frontmatter "$file" "context")
+  static=$(parse_frontmatter "$file" "static")
+  model="${model:-$DEFAULT_MODEL}"
+  filename="${filename:-$name}"
+  filename="${filename//_/-}"
+  body=$(parse_body "$file")
+
+  local dry_output_file
+  if [[ "$static" == "true" ]]; then
+    dry_output_file="$output_dir/${filename}.md"
+  else
+    dry_output_file="$output_dir/${DATE}-${filename}.md"
+  fi
+
+  echo "Would execute:"
+  echo "  claude -p \"(${#body} chars)\" --model $model --output-format json"
+  [[ -f "$SYSTEM_FILE" ]] && echo "  --system-prompt \"($(wc -c < "$SYSTEM_FILE" | tr -d ' ') bytes from system.md)\""
+  [[ -n "$tools" ]] && echo "  --allowedTools \"$tools\""
+  if [[ -n "$context_glob" ]]; then
+    local ctx_dir ctx_pat ctx_count
+    ctx_dir="$(dirname "$context_glob")"
+    ctx_pat="$(basename "$context_glob")"
+    ctx_count=$(find "$ctx_dir" -maxdepth 1 -name "$ctx_pat" -type f 2>/dev/null | head -7 | wc -l | tr -d ' ')
+    echo "  Context: $ctx_count previous notes from $context_glob"
+  fi
+  [[ "$static" == "true" ]] && echo "  Static: overwrites same file each run"
+  echo "  Output → $dry_output_file"
+}
+
+run_all() {
+  local pids=() names=()
+  for file in "$PROMPTS_DIR"/*.md; do
+    [[ -f "$file" ]] || continue
+    [[ "$(basename "$file")" == "system.md" ]] && continue
+    local name
+    name=$(basename "$file" .md)
+    run_prompt "$name" &
+    pids+=($!)
+    names+=("$name")
+  done
+  local failed=0
+  for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+      echo "  Failed: ${names[$i]}" >&2
+      failed=1
+    fi
+  done
+  [[ $failed -eq 1 ]] && exit 1
+}
+
+# Main
+[[ $# -lt 1 ]] && usage
+
+case "$1" in
+  run)
+    [[ $# -lt 2 ]] && usage
+    if [[ "$2" == "--all" ]]; then
+      run_all
+    else
+      run_prompt "$2"
+    fi
+    ;;
+  list)
+    list_prompts
+    ;;
+  dry)
+    [[ $# -lt 2 ]] && usage
+    dry_run "$2"
+    ;;
+  *)
+    usage
+    ;;
+esac

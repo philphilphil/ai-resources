@@ -13,11 +13,18 @@ ai-resources/
 │       ├── security-review.md
 │       ├── frontend-tests.md
 │       └── maintenance-audit.md
+├── agent/                  # Standalone prompt runner (Claude CLI wrapper)
+│   ├── agent               # Bash script — parses frontmatter, runs prompts, writes output
+│   └── prompts/            # Prompts for the agent runner
+│       ├── system.md       # Shared system prompt (formatting rules)
+│       ├── daily_news.md   # Daily news briefing
+│       └── music_news.md   # Classical music & opera scout
 ├── prompts/                # Standalone prompts (not linked, just a collection)
 └── link.py
 ```
 
 - **skills/** — everything here gets symlinked as Agent Skills. Both `commands/` and `prompts/` are linked; the split is just organizational (short triggers vs detailed playbooks).
+- **agent/** — a standalone prompt runner that calls `claude` CLI, injects context from previous outputs, and writes results to files (e.g. an Obsidian vault). Prompts use YAML frontmatter for config (`output`, `model`, `tools`, `context`, `static`). Run with `./agent run <name>` or `./agent run --all`.
 - **prompts/** (root) — reference prompts you copy-paste or feed manually. Not linked into any tool.
 
 ## Usage
