@@ -44,12 +44,14 @@ python3 link.py --project ~/Projects/my-app --unlink
 
 ### Claude Code
 
-Claude Code loads custom slash commands from plain `.md` files. The script creates symlinks pointing back to this repo.
+Claude Code supports two equivalent paths for custom slash commands: `.claude/commands/*.md` (legacy) and `.claude/skills/<name>/SKILL.md` (newer, supports extra features like supporting files and invocation control). Both create `/slash-commands` from plain markdown. This script uses the `commands/` path since the prompts are standalone `.md` files. ([docs](https://code.claude.com/docs/en/skills))
+
+The script creates symlinks pointing back to this repo:
 
 - **Global** (`--global`): symlinks into `~/.claude/commands/` — available in every project
 - **Per-project** (`--project`): symlinks into `<project>/.claude/commands/` — available only in that project
 
-A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`. The frontmatter is ignored by Claude Code; it just reads the markdown body as the prompt. ([docs](https://code.claude.com/docs/en/skills))
+A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`.
 
 ### Copilot CLI
 
