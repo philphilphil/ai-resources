@@ -1,6 +1,6 @@
 # ai-resources
 
-Reusable prompts and commands for AI coding assistants. Works with both [Claude Code](https://claude.ai/code) and [GitHub Copilot CLI](https://github.com/features/copilot/cli).
+Reusable prompts and commands for AI coding assistants. Works with both [Claude Code](https://claude.ai/code) and [GitHub Copilot CLI](https://github.com/features/copilot/cli) via the shared [Agent Skills](https://agentskills.io) standard.
 
 ## Structure
 
@@ -20,16 +20,21 @@ ai-resources/
 ### Link globally (available in all projects)
 
 ```sh
-python3 link.py --global              # both tools
-python3 link.py --global --claude     # Claude Code only
-python3 link.py --global --copilot    # Copilot CLI only
+python3 link.py --global
 ```
 
 ### Link into a specific project
 
 ```sh
 python3 link.py --project ~/Projects/my-app
-python3 link.py --project ~/Projects/my-app --claude
+```
+
+### Copilot-only projects
+
+By default, skills are linked into `.claude/skills/` (which both tools read). For projects that only use Copilot CLI, use `--copilot` to write to `.copilot/skills/` instead:
+
+```sh
+python3 link.py --global --copilot
 python3 link.py --project ~/Projects/my-app --copilot
 ```
 
@@ -42,53 +47,39 @@ python3 link.py --project ~/Projects/my-app --unlink
 
 ## How it works
 
-### Claude Code
+Both Claude Code and Copilot CLI support the [Agent Skills](https://agentskills.io) open standard. Skills live in `.claude/skills/<name>/SKILL.md` — a directory per skill with a `SKILL.md` entrypoint containing YAML frontmatter (`name`, `description`) and markdown instructions.
 
-Claude Code loads skills from `.claude/skills/<name>/SKILL.md`. Each skill is a directory with a `SKILL.md` entrypoint. Skills support YAML frontmatter (`name`, `description`) which Claude uses to decide when to auto-invoke them, and you can always invoke manually with `/skill-name`. ([docs](https://code.claude.com/docs/en/skills))
+Both tools look for skills in these locations:
 
-The script symlinks each source file as a `SKILL.md` inside a skill directory:
-
-- **Global** (`--global`): symlinks into `~/.claude/skills/<name>/SKILL.md` — available in every project
-- **Per-project** (`--project`): symlinks into `<project>/.claude/skills/<name>/SKILL.md` — available only in that project
-
-A file like `prompts/code-and-security-review.md` becomes `/code-and-security-review`.
-
-### Copilot CLI
-
-Copilot CLI loads custom agents from `.agent.md` files with YAML frontmatter (`name`, `description`). Since the source files are plain markdown, the script **generates** `.agent.md` wrappers with the frontmatter extracted from each file.
-
-- **Global** (`--global`): writes to `~/.copilot/agents/` — available in every project
-- **Per-project** (`--project`): writes to `<project>/.github/agents/` — available only in that project
-
-A file like `prompts/code-and-security-review.md` becomes the agent `code-and-security-review`, invocable via `/agent` in interactive mode or `--agent code-and-security-review` on the command line. ([docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli))
-
-### Summary
-
-| | Claude Code | Copilot CLI |
+| Scope | Claude Code | Copilot CLI |
 |---|---|---|
-| Source format | Plain `.md` (as `SKILL.md`) | Plain `.md` (converted to `.agent.md`) |
-| Link method | Symlink | Generated file |
-| Project dir | `.claude/skills/<name>/SKILL.md` | `.github/agents/` |
-| Global dir | `~/.claude/skills/<name>/SKILL.md` | `~/.copilot/agents/` |
-| Invoke | `/command-name` | `/agent` or `--agent name` |
+| **Global** | `~/.claude/skills/<name>/SKILL.md` | `~/.claude/skills/` or `~/.copilot/skills/` |
+| **Per-project** | `<project>/.claude/skills/<name>/SKILL.md` | `<project>/.claude/skills/` or `<project>/.copilot/skills/` |
+
+Copilot CLI reads from both `.claude/skills/` and `.copilot/skills/`. The default writes to `.claude/skills/` so both tools pick it up. Use `--copilot` for Copilot-only projects.
+
+The script symlinks each source file as a `SKILL.md` inside the appropriate skill directory. Since it's the same format and path, one symlink works for both tools.
+
+**Invoking skills:**
+
+| Claude Code | Copilot CLI |
+|---|---|
+| `/skill-name` | `/skills` to browse, or reference by name in prompt |
+| Auto-invoked when description matches context | Auto-invoked when description matches prompt |
+
+Docs: [Claude Code skills](https://code.claude.com/docs/en/skills), [Copilot CLI skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills)
 
 ## Adding new commands/prompts
 
 1. Add a `.md` file to `commands/` or `prompts/`
-2. Use a YAML frontmatter block so the link script can extract metadata:
+2. Include YAML frontmatter so both tools know when to activate it:
    ```markdown
    ---
-   name: My Command
+   name: my-skill
    description: One-line description of what this does
    ---
 
    The actual prompt content...
    ```
-   If no frontmatter is present, the script derives the name from the filename.
+   If no frontmatter is present, skills still work but won't auto-activate.
 3. Re-run `python3 link.py` to pick up new files.
-
-## Sources
-
-- [Claude Code custom commands](https://code.claude.com/docs/en/skills)
-- [Copilot CLI custom agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli)
-- [Copilot CLI custom instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions)
