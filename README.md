@@ -42,14 +42,33 @@ python3 link.py --project ~/Projects/my-app --unlink
 
 ## How it works
 
+### Claude Code
+
+Claude Code loads custom slash commands from plain `.md` files. The script creates symlinks pointing back to this repo.
+
+- **Global** (`--global`): symlinks into `~/.claude/commands/` — available in every project
+- **Per-project** (`--project`): symlinks into `<project>/.claude/commands/` — available only in that project
+
+A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`. The frontmatter is ignored by Claude Code; it just reads the markdown body as the prompt.
+
+### Copilot CLI
+
+Copilot CLI loads custom agents from `.agent.md` files with YAML frontmatter (`name`, `description`). Since the source files are plain markdown, the script **generates** `.agent.md` wrappers with the frontmatter extracted from each file.
+
+- **Global** (`--global`): writes to `~/.copilot/agents/` — available in every project
+- **Per-project** (`--project`): writes to `<project>/.github/agents/` — available only in that project
+
+A file like `prompts/code-and-security-review.md` becomes the agent `code-and-security-review`, invocable via `/agent` in interactive mode or `--agent code-and-security-review` on the command line.
+
+### Summary
+
 | | Claude Code | Copilot CLI |
 |---|---|---|
-| Format | Plain markdown | `.agent.md` with YAML frontmatter |
+| Source format | Plain `.md` | Plain `.md` (converted to `.agent.md`) |
+| Link method | Symlink | Generated file |
 | Project dir | `.claude/commands/` | `.github/agents/` |
 | Global dir | `~/.claude/commands/` | `~/.copilot/agents/` |
 | Invoke | `/command-name` | `/agent` or `--agent name` |
-
-The script symlinks files directly for Claude Code (it reads plain `.md`). For Copilot CLI, it generates `.agent.md` wrapper files that reference the source markdown, since Copilot expects YAML frontmatter with `name` and `description`.
 
 ## Adding new commands/prompts
 
