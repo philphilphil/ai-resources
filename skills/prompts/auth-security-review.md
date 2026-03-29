@@ -1,83 +1,67 @@
 ---
 name: auth-security-review
-description: Use when reviewing authentication and authorization in an ASP.NET + SPA application — audits login, registration, email verification, OAuth, session/cookie security, and frontend route guards for real vulnerabilities
+description: Deep auth security analysis for ASP.NET + SPA apps — runs after initial PR review to find subtle vulnerabilities that surface-level checks miss
 disable-model-invocation: true
 ---
 
-You are a security auditor reviewing the authentication and authorization implementation in this ASP.NET + SPA application. Your job is to find REAL vulnerabilities, not theoretical nitpicks. Read every file involved in auth and trace every flow end-to-end.
+You are a security auditor performing a deep analysis of the authentication and authorization implementation in this ASP.NET + SPA application. The basics work — this has already passed initial PR review. Your job is to find the subtle, non-obvious vulnerabilities that surface-level reviews miss.
 
 **Do NOT make any edits. Research only.**
 
-## Step 1: Discover auth surface
+## Step 1: Map the auth surface
 
-Before analyzing anything, find the actual files. Read project structure and locate:
+Read project structure and locate all files involved in auth. Read them completely before analysis:
 
-- **Server auth config** — Startup/Program.cs: auth middleware, policies, cookie settings, identity provider setup (e.g., OpenIddict, IdentityServer, ASP.NET Identity)
-- **Middleware pipeline** — verify `UseAuthentication()` comes before `UseAuthorization()` comes before endpoint mapping. Wrong order = silently no auth.
+- **Server auth config** — Startup/Program.cs: middleware pipeline, policies, cookie settings, identity provider setup (OpenIddict, IdentityServer, ASP.NET Identity, etc.)
 - **Account endpoints** — registration, login, email confirmation, password reset, email change
 - **OAuth endpoints** — authorize, token, consent, userinfo (if applicable)
-- **Frontend route guards** — router config with auth/verification guards
-- **Frontend auth state** — auth store or service managing session state
-- **Email verification views** — confirmation, email change confirmation pages
+- **Frontend auth** — route guards, auth store/service, verification views
 
-Read all discovered files completely before starting analysis.
+## Step 2: Deep analysis
 
-## Step 2: Audit against threat model
+These checks assume the obvious stuff is already handled (auth exists, policies are defined, cookies are set). Focus on the interactions, edge cases, and state transitions where bugs hide.
 
-Check each item below. For each, give a verdict: **SECURE**, **CONCERN** (with explanation), or **VULNERABILITY** (with exploit scenario and file:line reference). Don't pad with theory — only flag things that are actually exploitable or broken in this code.
+For each item, give a verdict: **SECURE**, **CONCERN** (with explanation), or **VULNERABILITY** (with exploit scenario and file:line reference). Only flag things that are actually exploitable or broken — no theoretical padding.
 
-### Authentication
+### State transitions & claim lifecycle
 
-1. **Pre-confirmation abuse** — Can I register with someone else's email and do anything harmful before they confirm?
-2. **Confirmation bypass** — Can I skip email confirmation and access protected endpoints? Check every endpoint group — are any missing the email-verified policy that should have it?
-3. **Token forgery/reuse** — Can I reuse or forge a confirmation token? What are the token properties (lifetime, scope, one-time use)?
-4. **Token leakage** — Email confirmation/reset tokens appear in URLs. Can they leak via Referer headers, server logs, or browser history? Are they single-use and short-lived enough to mitigate?
-5. **Claim correctness** — Does the login flow correctly set the email-confirmed claim for both verified and unverified users?
-6. **User enumeration** — Can I enumerate valid emails via register/login/forgot-password response differences?
-7. **Rate limiting** — Are rate limits applied to auth endpoints? Which ones, and are they sufficient?
-8. **Password policy** — Is `PasswordOptions` configured? Are the requirements actually enforced, or just defaults?
-9. **Account lockout** — Is lockout enabled? If so, can I DOS any user by deliberately failing their login? If not, is brute force possible?
+1. **Stale claims after state change** — When a user's email becomes unverified (email change), password is changed, or account is locked — how long do existing sessions remain valid? Check `SecurityStampValidationInterval`. Default is 30 min, meaning a compromised account stays exploitable for up to 30 minutes after password change.
+2. **Post-confirmation session** — After email confirmation, is the cookie/session refreshed with updated claims immediately, or does the user need to re-login to get the email-verified claim?
+3. **Post-email-change session** — After email change, what happens to the existing session? Can the user still pass email-verified checks with the old (now unverified) email? Trace the full flow: email change request → confirmation → claim update.
+4. **Token refresh after state change** — (OAuth) What happens on token refresh if a user's verified status changed since the token was issued? Are claims re-evaluated from the database or copied from the old token?
+5. **Claim consistency** — Is the email-verified claim name identical everywhere — policy definition, claim creation in login, claim creation in registration, OAuth token enrichment? A typo means the policy silently fails open.
 
-### Authorization
+### Token & link security
 
-10. **Policy mapping** — List EVERY endpoint group and its authorization policy. Flag any that seem wrong (e.g., data endpoints without email-verified, or account endpoints that should/shouldn't require verification).
-11. **Policy integrity** — Does the email-verified policy actually work? Trace from policy definition through to claim creation in login/register. Is the claim name consistent everywhere?
-12. **Sensitive endpoint exposure** — Can an unverified user access sensitive endpoints (MCP, admin, API, etc.)?
-13. **Stale claims** — ASP.NET cookie auth is encrypted+signed, so client-side tampering isn't possible. But are claims refreshed from the database on subsequent requests? Check `SecurityStampValidationInterval` — if too long (default: 30 min), a password change or email unverification won't invalidate existing sessions promptly. What's the actual interval?
+6. **Token scope isolation** — Are confirmation, password reset, and email change tokens scoped so they can't be used interchangeably? (e.g., can a password reset token confirm an email?)
+7. **Token leakage** — Tokens in URLs leak via Referer headers when the confirmation page loads external resources, via server access logs, and via browser history. Are tokens single-use? Short-lived? Is the confirmation page free of external resource loads?
+8. **Open redirect** — Do login, logout, or confirmation endpoints accept a `returnUrl` / `redirect_uri`? Is it validated against an allowlist or just checked for relative paths (which can be bypassed with `//evil.com`)?
 
-### OAuth (if applicable)
+### Authorization gaps
 
-14. **Unverified user flow** — Trace the full OAuth flow for an unverified user. Where exactly are they blocked? Are there any paths through?
-15. **Token claims** — Does the access token contain the email-confirmed claim? Can a downstream client trust it?
-16. **Token refresh after state change** — What happens on token refresh if a user's email becomes unverified (e.g., after email change)?
+9. **Policy completeness** — List every endpoint group and its authorization policy. The question isn't whether policies exist — it's whether the RIGHT policy is on the RIGHT endpoint. Focus on: data-mutation endpoints without email-verified, admin/sensitive endpoints with only basic auth, and any endpoint that should require verification but doesn't.
+10. **Unverified user OAuth flow** — (if applicable) Trace the full OAuth authorize → token flow for a user with `email_confirmed = false`. Where exactly is the block? Is it in the authorize endpoint, the token endpoint, or the policy on the resource? If the block is only on the resource, the user still gets a valid access token.
+11. **IDOR in auth endpoints** — Do any account management endpoints (change email, change password, delete account, update profile) accept a userId from the request rather than deriving it from the authenticated session? This is the #1 most common auth vuln in REST APIs.
+12. **Re-authentication for sensitive ops** — Does email change or password change require the current password? On a hijacked session (XSS, shared computer), can an attacker change the email/password without knowing the original?
 
-### Session & cookie security
+### ASP.NET-specific
 
-17. **Cookie settings** — What are the cookie settings? (HttpOnly, Secure, SameSite, expiry)
-18. **Post-confirmation session** — After email confirmation, is the cookie/session updated immediately or does the user need to re-login?
-19. **Post-email-change session** — After email change, what happens to the session? Can the user still access endpoints with the old email?
-20. **Data protection keys** — Are Data Protection keys persisted? If not, all confirmation/reset tokens break on app restart or deployment. Check for `PersistKeysTo*` configuration.
+13. **Middleware pipeline order** — Verify `UseAuthentication()` → `UseAuthorization()` → endpoint mapping. Wrong order means auth attributes are silently ignored. Also check that any custom middleware (rate limiting, CORS) is in the right position relative to auth.
+14. **Data protection key persistence** — Confirmation/reset tokens are generated via the Data Protection API. If keys aren't persisted (`PersistKeysToFileSystem`, `PersistKeysToDbContext`, etc.), all outstanding tokens break on app restart or deployment. Check Program.cs for `AddDataProtection()` configuration.
+15. **Account lockout as DOS vector** — If lockout is enabled, can an attacker lock out any user by repeatedly failing login? Is there any mitigation (CAPTCHA after N failures, progressive delays, IP-based limiting vs account-based limiting)?
+16. **CSRF on cookie-authenticated API endpoints** — If the API uses cookie auth (not just bearer tokens), state-changing endpoints need anti-forgery protection. Check for `[ValidateAntiForgeryToken]` or anti-forgery middleware. SPAs using cookie auth are particularly vulnerable here.
 
-### Frontend
+### Frontend consistency
 
-21. **Guard bypass** — Can I bypass the router guard by navigating directly to a protected URL? (Frontend guards are UX, not security — but check they're consistent with server-side enforcement.)
-22. **State tracking** — Does the auth store correctly track emailConfirmed state? When is it refreshed?
-23. **Missing guards** — Are there any routes that should require verification but don't have the guard?
-
-### Cross-cutting
-
-24. **IDOR** — Is there any endpoint that accepts a userId from the request body/query and does something privileged with it without verifying it matches the authenticated user?
-25. **Token scope isolation** — Are all email links (confirm, reset, change) properly scoped to prevent token reuse across different operations?
-26. **CSRF** — Check CSRF protection on state-changing auth endpoints.
-27. **Open redirect** — Do login, logout, or confirmation endpoints accept a `returnUrl` / `redirect_uri` parameter? If so, is it validated against an allowlist, or can an attacker redirect to an arbitrary domain?
-28. **Re-authentication for sensitive ops** — Does email change or password change require the current password? Can I perform these on a hijacked session without knowing the password?
+17. **Guard/server policy alignment** — Compare every frontend route guard against the corresponding server-side policy. The guards are just UX — but misalignment means users see confusing errors instead of proper redirects, or worse, the frontend shows content the server would block (leaking UI structure).
+18. **Auth state refresh** — When does the frontend refresh its understanding of `emailConfirmed` / `isAuthenticated`? If it only checks on login, a user who confirms email in another tab stays locked out of guarded routes until page refresh.
 
 ## Step 3: Write report
 
-Write findings to `docs/security/auth-review.md` using this format:
+Write findings to `docs/security/auth-review.md`:
 
 ```
-# Auth Security Review
+# Auth Security Review (Deep Analysis)
 
 **Date:** [today] | **Files Reviewed:** [list]
 
@@ -91,17 +75,15 @@ Write findings to `docs/security/auth-review.md` using this format:
 
 ## Findings
 
-### Authentication
-#### 1. Pre-confirmation abuse — [VERDICT]
+### State transitions & claim lifecycle
+#### 1. Stale claims after state change — [VERDICT]
 [Evidence with file:line references]
-
-#### 2. Confirmation bypass — [VERDICT]
 ...
 
-(continue for all 28 items)
+(continue for all applicable items)
 
 ## Priority Fixes
-1. [Most critical item first — one-liner with file reference]
+1. [Most critical — one-liner with file reference]
 2. ...
 ```
 
