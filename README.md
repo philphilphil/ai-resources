@@ -49,7 +49,7 @@ Claude Code loads custom slash commands from plain `.md` files. The script creat
 - **Global** (`--global`): symlinks into `~/.claude/commands/` — available in every project
 - **Per-project** (`--project`): symlinks into `<project>/.claude/commands/` — available only in that project
 
-A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`. The frontmatter is ignored by Claude Code; it just reads the markdown body as the prompt.
+A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`. The frontmatter is ignored by Claude Code; it just reads the markdown body as the prompt. ([docs](https://code.claude.com/docs/en/skills))
 
 ### Copilot CLI
 
@@ -58,7 +58,7 @@ Copilot CLI loads custom agents from `.agent.md` files with YAML frontmatter (`n
 - **Global** (`--global`): writes to `~/.copilot/agents/` — available in every project
 - **Per-project** (`--project`): writes to `<project>/.github/agents/` — available only in that project
 
-A file like `prompts/code-and-security-review.md` becomes the agent `code-and-security-review`, invocable via `/agent` in interactive mode or `--agent code-and-security-review` on the command line.
+A file like `prompts/code-and-security-review.md` becomes the agent `code-and-security-review`, invocable via `/agent` in interactive mode or `--agent code-and-security-review` on the command line. ([docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli))
 
 ### Summary
 
