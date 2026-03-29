@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SOURCE_DIRS = ["commands", "prompts"]
+SOURCE_DIRS = ["skills/commands", "skills/prompts"]
 
 
 def link(src: Path, skills_dir: Path) -> None:

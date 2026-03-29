@@ -6,14 +6,19 @@ Reusable prompts and commands for AI coding assistants. Works with both [Claude 
 
 ```
 ai-resources/
-├── commands/           # Slash commands (short, action-oriented)
-│   └── pr.md
-├── prompts/            # Longer prompts (multi-step workflows)
-│   ├── code-and-security-review.md
-│   ├── frontend-test-instructions.md
-│   └── maintenance-audit.md
-└── link.py             # Symlinks everything into the right places
+├── skills/                 # Linked into AI tools via link.py
+│   ├── commands/           # One-liner shortcuts
+│   │   └── pr.md
+│   └── prompts/            # Detailed multi-step playbooks
+│       ├── security-review.md
+│       ├── frontend-tests.md
+│       └── maintenance-audit.md
+├── prompts/                # Standalone prompts (not linked, just a collection)
+└── link.py
 ```
+
+- **skills/** — everything here gets symlinked as Agent Skills. Both `commands/` and `prompts/` are linked; the split is just organizational (short triggers vs detailed playbooks).
+- **prompts/** (root) — reference prompts you copy-paste or feed manually. Not linked into any tool.
 
 ## Usage
 
@@ -69,9 +74,9 @@ The script symlinks each source file as a `SKILL.md` inside the appropriate skil
 
 Docs: [Claude Code skills](https://code.claude.com/docs/en/skills), [Copilot CLI skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills)
 
-## Adding new commands/prompts
+## Adding new skills
 
-1. Add a `.md` file to `commands/` or `prompts/`
+1. Add a `.md` file to `skills/commands/` (short triggers) or `skills/prompts/` (detailed playbooks)
 2. Include YAML frontmatter so both tools know when to activate it:
    ```markdown
    ---
@@ -83,3 +88,5 @@ Docs: [Claude Code skills](https://code.claude.com/docs/en/skills), [Copilot CLI
    ```
    If no frontmatter is present, skills still work but won't auto-activate.
 3. Re-run `python3 link.py` to pick up new files.
+
+For standalone prompts that don't need tool integration, just add them to `prompts/` at the root.
