@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 You are a security auditor performing a deep analysis of the authentication and authorization implementation in this ASP.NET + SPA application. The basics work — this has already passed initial PR review. Your job is to find the subtle, non-obvious vulnerabilities that surface-level reviews miss.
 
-**Do NOT make any edits. Research only.**
+**Do NOT make any edits. Research only. Output findings directly — do not write to any files.**
 
 ## Step 1: Map the auth surface
 
@@ -17,9 +17,25 @@ Read project structure and locate all files involved in auth. Read them complete
 - **OAuth endpoints** — authorize, token, consent, userinfo (if applicable)
 - **Frontend auth** — route guards, auth store/service, verification views
 
-## Step 2: Deep analysis
+## Step 2: Endpoint authorization map
 
-These checks assume the obvious stuff is already handled (auth exists, policies are defined, cookies are set). Focus on the interactions, edge cases, and state transitions where bugs hide.
+List EVERY endpoint group in a table. This is the foundation — get it right before doing anything else.
+
+| Endpoint | Method | Auth Policy | Email Verified Required | Verdict |
+|----------|--------|-------------|------------------------|---------|
+| /api/account/register | POST | Anonymous | N/A | ... |
+| /api/decks | GET | Authorized | Yes | ... |
+| ... | ... | ... | ... | ... |
+
+For each endpoint, the verdict is whether the policy is correct for what the endpoint does. Flag:
+- Data-mutation endpoints missing email-verified
+- Sensitive endpoints (admin, MCP, etc.) with only basic auth
+- Account management endpoints that should/shouldn't require verification
+- Any endpoint where the policy doesn't match the sensitivity of the operation
+
+## Step 3: Deep analysis
+
+These checks assume the obvious stuff is already handled. Focus on interactions, edge cases, and state transitions where bugs hide.
 
 For each item, give a verdict: **SECURE**, **CONCERN** (with explanation), or **VULNERABILITY** (with exploit scenario and file:line reference). Only flag things that are actually exploitable or broken — no theoretical padding.
 
@@ -39,33 +55,27 @@ For each item, give a verdict: **SECURE**, **CONCERN** (with explanation), or **
 
 ### Authorization gaps
 
-9. **Policy completeness** — List every endpoint group and its authorization policy. The question isn't whether policies exist — it's whether the RIGHT policy is on the RIGHT endpoint. Focus on: data-mutation endpoints without email-verified, admin/sensitive endpoints with only basic auth, and any endpoint that should require verification but doesn't.
-10. **Unverified user OAuth flow** — (if applicable) Trace the full OAuth authorize → token flow for a user with `email_confirmed = false`. Where exactly is the block? Is it in the authorize endpoint, the token endpoint, or the policy on the resource? If the block is only on the resource, the user still gets a valid access token.
-11. **IDOR in auth endpoints** — Do any account management endpoints (change email, change password, delete account, update profile) accept a userId from the request rather than deriving it from the authenticated session? This is the #1 most common auth vuln in REST APIs.
-12. **Re-authentication for sensitive ops** — Does email change or password change require the current password? On a hijacked session (XSS, shared computer), can an attacker change the email/password without knowing the original?
+9. **Unverified user OAuth flow** — (if applicable) Trace the full OAuth authorize → token flow for a user with `email_confirmed = false`. Where exactly is the block? Is it in the authorize endpoint, the token endpoint, or the policy on the resource? If the block is only on the resource, the user still gets a valid access token.
+10. **IDOR in auth endpoints** — Do any account management endpoints (change email, change password, delete account, update profile) accept a userId from the request rather than deriving it from the authenticated session? This is the #1 most common auth vuln in REST APIs.
+11. **Re-authentication for sensitive ops** — Does email change or password change require the current password? On a hijacked session (XSS, shared computer), can an attacker change the email/password without knowing the original?
 
 ### ASP.NET-specific
 
-13. **Middleware pipeline order** — Verify `UseAuthentication()` → `UseAuthorization()` → endpoint mapping. Wrong order means auth attributes are silently ignored. Also check that any custom middleware (rate limiting, CORS) is in the right position relative to auth.
-14. **Data protection key persistence** — Confirmation/reset tokens are generated via the Data Protection API. If keys aren't persisted (`PersistKeysToFileSystem`, `PersistKeysToDbContext`, etc.), all outstanding tokens break on app restart or deployment. Check Program.cs for `AddDataProtection()` configuration.
-15. **Account lockout as DOS vector** — If lockout is enabled, can an attacker lock out any user by repeatedly failing login? Is there any mitigation (CAPTCHA after N failures, progressive delays, IP-based limiting vs account-based limiting)?
-16. **CSRF on cookie-authenticated API endpoints** — If the API uses cookie auth (not just bearer tokens), state-changing endpoints need anti-forgery protection. Check for `[ValidateAntiForgeryToken]` or anti-forgery middleware. SPAs using cookie auth are particularly vulnerable here.
+12. **Middleware pipeline order** — Verify `UseAuthentication()` → `UseAuthorization()` → endpoint mapping. Wrong order means auth attributes are silently ignored. Also check that any custom middleware (rate limiting, CORS) is in the right position relative to auth.
+13. **Data protection key persistence** — Confirmation/reset tokens are generated via the Data Protection API. If keys aren't persisted (`PersistKeysToFileSystem`, `PersistKeysToDbContext`, etc.), all outstanding tokens break on app restart or deployment. Check Program.cs for `AddDataProtection()` configuration.
+14. **Account lockout as DOS vector** — If lockout is enabled, can an attacker lock out any user by repeatedly failing login? Is there any mitigation (CAPTCHA after N failures, progressive delays, IP-based limiting vs account-based limiting)?
+15. **CSRF on cookie-authenticated API endpoints** — If the API uses cookie auth (not just bearer tokens), state-changing endpoints need anti-forgery protection. Check for `[ValidateAntiForgeryToken]` or anti-forgery middleware. SPAs using cookie auth are particularly vulnerable here.
 
 ### Frontend consistency
 
-17. **Guard/server policy alignment** — Compare every frontend route guard against the corresponding server-side policy. The guards are just UX — but misalignment means users see confusing errors instead of proper redirects, or worse, the frontend shows content the server would block (leaking UI structure).
-18. **Auth state refresh** — When does the frontend refresh its understanding of `emailConfirmed` / `isAuthenticated`? If it only checks on login, a user who confirms email in another tab stays locked out of guarded routes until page refresh.
+16. **Guard/server policy alignment** — Compare every frontend route guard against the corresponding server-side policy. The guards are just UX — but misalignment means users see confusing errors instead of proper redirects, or worse, the frontend shows content the server would block (leaking UI structure).
+17. **Auth state refresh** — When does the frontend refresh its understanding of `emailConfirmed` / `isAuthenticated`? If it only checks on login, a user who confirms email in another tab stays locked out of guarded routes until page refresh.
 
-## Step 3: Write report
+## Output format
 
-Write findings to `docs/security/auth-review.md`:
+Present findings directly in the conversation. Use this structure:
 
-```
-# Auth Security Review (Deep Analysis)
-
-**Date:** [today] | **Files Reviewed:** [list]
-
-## Risk Summary
+### Risk Summary
 
 | Severity | Count |
 |----------|-------|
@@ -73,18 +83,13 @@ Write findings to `docs/security/auth-review.md`:
 | 🟠 Concern | N |
 | ✅ Secure | N |
 
-## Findings
+### Endpoint Authorization Map
+(the table from Step 2)
 
-### State transitions & claim lifecycle
-#### 1. Stale claims after state change — [VERDICT]
-[Evidence with file:line references]
-...
+### Findings
+For each check: number, name, verdict, and evidence with file:line references.
 
-(continue for all applicable items)
-
-## Priority Fixes
-1. [Most critical — one-liner with file reference]
-2. ...
-```
+### Priority Fixes
+Numbered list, most critical first, one-liner with file reference each.
 
 Skip items that don't apply to this project and note why.
