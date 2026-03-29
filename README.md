@@ -12,7 +12,7 @@ ai-resources/
 │   ├── code-and-security-review.md
 │   ├── frontend-test-instructions.md
 │   └── maintenance-audit.md
-└── link.sh             # Symlinks everything into the right places
+└── link.py             # Symlinks everything into the right places
 ```
 
 ## Usage
@@ -20,24 +20,24 @@ ai-resources/
 ### Link globally (available in all projects)
 
 ```sh
-./link.sh --global              # both tools
-./link.sh --global --claude     # Claude Code only
-./link.sh --global --copilot    # Copilot CLI only
+python3 link.py --global              # both tools
+python3 link.py --global --claude     # Claude Code only
+python3 link.py --global --copilot    # Copilot CLI only
 ```
 
 ### Link into a specific project
 
 ```sh
-./link.sh --project ~/Projects/my-app
-./link.sh --project ~/Projects/my-app --claude
-./link.sh --project ~/Projects/my-app --copilot
+python3 link.py --project ~/Projects/my-app
+python3 link.py --project ~/Projects/my-app --claude
+python3 link.py --project ~/Projects/my-app --copilot
 ```
 
 ### Unlink
 
 ```sh
-./link.sh --global --unlink
-./link.sh --project ~/Projects/my-app --unlink
+python3 link.py --global --unlink
+python3 link.py --project ~/Projects/my-app --unlink
 ```
 
 ## How it works
@@ -64,7 +64,7 @@ The script symlinks files directly for Claude Code (it reads plain `.md`). For C
    The actual prompt content...
    ```
    If no frontmatter is present, the script derives the name from the filename.
-3. Re-run `./link.sh` to pick up new files.
+3. Re-run `python3 link.py` to pick up new files.
 
 ## Sources
 
