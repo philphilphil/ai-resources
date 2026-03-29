@@ -22,9 +22,7 @@ ai-resources/
 ├── instructions/           # Technology-specific coding instructions (.instructions.md)
 │   ├── containerization-docker-best-practices.instructions.md
 │   ├── github-actions-ci-cd-best-practices.instructions.md
-│   ├── go.instructions.md
 │   ├── markdown.instructions.md
-│   ├── nextjs.instructions.md
 │   ├── performance-optimization.instructions.md
 │   ├── react-typescript.instructions.md
 │   └── security-and-owasp.instructions.md
