@@ -47,15 +47,19 @@ def parse_frontmatter(path: Path) -> tuple[str, str, str]:
 
 def link_claude(src: Path, dest_dir: Path, unlink: bool) -> None:
     slug = src.stem
-    dest = dest_dir / f"{slug}.md"
+    skill_dir = dest_dir / slug
+    dest = skill_dir / "SKILL.md"
 
     if unlink:
         if dest.is_symlink():
             dest.unlink()
             print(f"  removed {dest}")
+        # Clean up empty skill directory
+        if skill_dir.is_dir() and not any(skill_dir.iterdir()):
+            skill_dir.rmdir()
         return
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.mkdir(parents=True, exist_ok=True)
 
     if dest.exists() and not dest.is_symlink():
         print(f"  skip {dest} (exists, not a symlink)")
@@ -109,14 +113,14 @@ def main() -> None:
     # Resolve target directories
     home = Path.home()
     if args.global_:
-        claude_dir = home / ".claude" / "commands"
+        claude_dir = home / ".claude" / "skills"
         copilot_dir = home / ".copilot" / "agents"
     else:
         project = Path(args.project).resolve()
         if not project.is_dir():
             print(f"Project path '{args.project}' does not exist", file=sys.stderr)
             sys.exit(1)
-        claude_dir = project / ".claude" / "commands"
+        claude_dir = project / ".claude" / "skills"
         copilot_dir = project / ".github" / "agents"
 
     do_claude = args.claude or (not args.claude and not args.copilot)

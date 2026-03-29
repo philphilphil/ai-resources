@@ -44,14 +44,14 @@ python3 link.py --project ~/Projects/my-app --unlink
 
 ### Claude Code
 
-Claude Code supports two equivalent paths for custom slash commands: `.claude/commands/*.md` (legacy) and `.claude/skills/<name>/SKILL.md` (newer, supports extra features like supporting files and invocation control). Both create `/slash-commands` from plain markdown. This script uses the `commands/` path since the prompts are standalone `.md` files. ([docs](https://code.claude.com/docs/en/skills))
+Claude Code loads skills from `.claude/skills/<name>/SKILL.md`. Each skill is a directory with a `SKILL.md` entrypoint. Skills support YAML frontmatter (`name`, `description`) which Claude uses to decide when to auto-invoke them, and you can always invoke manually with `/skill-name`. ([docs](https://code.claude.com/docs/en/skills))
 
-The script creates symlinks pointing back to this repo:
+The script symlinks each source file as a `SKILL.md` inside a skill directory:
 
-- **Global** (`--global`): symlinks into `~/.claude/commands/` — available in every project
-- **Per-project** (`--project`): symlinks into `<project>/.claude/commands/` — available only in that project
+- **Global** (`--global`): symlinks into `~/.claude/skills/<name>/SKILL.md` — available in every project
+- **Per-project** (`--project`): symlinks into `<project>/.claude/skills/<name>/SKILL.md` — available only in that project
 
-A file like `prompts/code-and-security-review.md` becomes the command `/code-and-security-review`.
+A file like `prompts/code-and-security-review.md` becomes `/code-and-security-review`.
 
 ### Copilot CLI
 
@@ -66,10 +66,10 @@ A file like `prompts/code-and-security-review.md` becomes the agent `code-and-se
 
 | | Claude Code | Copilot CLI |
 |---|---|---|
-| Source format | Plain `.md` | Plain `.md` (converted to `.agent.md`) |
+| Source format | Plain `.md` (as `SKILL.md`) | Plain `.md` (converted to `.agent.md`) |
 | Link method | Symlink | Generated file |
-| Project dir | `.claude/commands/` | `.github/agents/` |
-| Global dir | `~/.claude/commands/` | `~/.copilot/agents/` |
+| Project dir | `.claude/skills/<name>/SKILL.md` | `.github/agents/` |
+| Global dir | `~/.claude/skills/<name>/SKILL.md` | `~/.copilot/agents/` |
 | Invoke | `/command-name` | `/agent` or `--agent name` |
 
 ## Adding new commands/prompts
