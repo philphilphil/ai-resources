@@ -1,6 +1,7 @@
 ---
-name: Security Review
+name: security-review
 description: Orchestrate a 7-agent parallel security and code review of the repository
+disable-model-invocation: true
 ---
 
 You are a lead code reviewer. Your job is to orchestrate a thorough security and code review of this repository by launching a team to work in parallel.

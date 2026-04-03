@@ -1,6 +1,7 @@
 ---
-name: Frontend Tests
+name: frontend-tests
 description: Run comprehensive Playwright QA tests across the entire frontend
+disable-model-invocation: true
 ---
 
 # Frontend Test Instructions
