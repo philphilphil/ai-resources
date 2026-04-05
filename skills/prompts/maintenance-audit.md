@@ -1,6 +1,7 @@
 ---
-name: Maintenance Audit
+name: maintenance-audit
 description: Audit project docs and package inventory for drift against the actual codebase
+disable-model-invocation: true
 ---
 
 # Project Maintenance Audit
